@@ -38,7 +38,8 @@ router.post("/create-product", async (req, res) => {
 // Get all products (public route)
 router.get("/", async (req, res) => {
   try {
-    const { category, color, minPrice, age, maxPrice, page = 1, limit = 10 } = req.query;
+    // const { category, color, minPrice, age, maxPrice, page = 1, limit = 10 } = req.query;
+    const { category, color, minPrice, maxPrice, page = 1, limit = 10 } = req.query;
 
     const filter = {};
 
@@ -50,9 +51,9 @@ router.get("/", async (req, res) => {
       filter.color = color;
     }
 
-    if (age && age !== "all") {
-      filter.age = parseInt(age);
-    }
+    // if (age && age !== "all") {
+    //   filter.age = parseInt(age);
+    // }
 
     const min = parseFloat(minPrice);
     const max = parseFloat(maxPrice);
@@ -91,9 +92,9 @@ router.get("/", async (req, res) => {
   } catch (error) {
     console.error("❌ Error fetching products:", error);
     console.error("❌ Error stack:", error.stack);
-    res.status(500).json({ 
+    res.status(500).json({
       message: "Failed to fetch products",
-      error: error.message 
+      error: error.message
     });
   }
 });
