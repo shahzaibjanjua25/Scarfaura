@@ -1,8 +1,9 @@
 // File: index.js
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-require('dotenv').config();
+// require('dotenv').config();
 const cookieParser = require('cookie-parser');
 const bodyParser = require('body-parser');
 const uploadImage = require('./src/utils/uploadImage');
@@ -49,7 +50,7 @@ app.post('/uploadImage', (req, res) => {
 
 // Root route
 app.get('/', (req, res) => {
-  res.send('Scarfaura Kids Clothing Store Ecommerce Server is Running..!');
+  res.send('Scarfaura  Server is Running..!');
 });
 
 // DB connection
