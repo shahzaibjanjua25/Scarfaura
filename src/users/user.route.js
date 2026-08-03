@@ -1,146 +1,125 @@
+// src/users/user.route.js
 const express = require('express');
 const router = express.Router();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const User = require('./user.model');
-const generateToken = require('../middleware/generateToken');
-const verifyToken = require('../middleware/verifyToken');
-const express = require('express');
-const router = express.Router();
-const bcrypt = require('bcryptjs');  
-const jwt = require('jsonwebtoken'); 
-const User = require('./user.model');
-const mongoose = require('mongoose'); 
+const mongoose = require('mongoose');
 require('dotenv').config();
-require('dotenv').config()
 
+// ============================================
+// Helper Functions
+// ============================================
+const generateToken = (userId) => {
+    return jwt.sign(
+        { id: userId },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d' }
+    );
+};
 
-// Register endpoint
+// ============================================
+// Routes
+// ============================================
+
+// Register
 router.post('/register', async (req, res) => {
     try {
         const { email, password, username } = req.body;
-        const user = new User({ email, password, username });
+        console.log('📝 Registration attempt for:', email);
+        
+        const existingUser = await User.findOne({ 
+            email: email.toLowerCase().trim() 
+        });
+        
+        if (existingUser) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'User already exists' 
+            });
+        }
+        
+        const user = new User({ 
+            email: email.toLowerCase().trim(), 
+            password, 
+            username: username.trim() 
+        });
+        
         await user.save();
-        res.status(201).send({ message: 'User registered successfully' });
+        console.log('✅ User registered successfully:', email);
+        
+        res.status(201).json({ 
+            success: true,
+            message: 'User registered successfully' 
+        });
+        
     } catch (error) {
-        console.error('Error registering user:', error);
-        res.status(500).send({ message: 'Registration failed. User already Exits' });
+        console.error('❌ Registration error:', error);
+        res.status(500).json({ 
+            success: false,
+            message: 'Registration failed',
+            error: error.message 
+        });
     }
 });
-router.options('*', (req, res) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Requested-With');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.sendStatus(200);
-});
-// Login endpoint
-// In auth.js - Login route with detailed logging
+
+// Login
 router.post('/login', async (req, res) => {
     console.log('========================================');
     console.log('🔐 LOGIN ATTEMPT RECEIVED');
     console.log('📧 Email:', req.body?.email);
-    console.log('🔑 Password provided:', req.body?.password ? 'Yes' : 'No');
     console.log('========================================');
     
     try {
         const { email, password } = req.body;
 
-        // Validate input
         if (!email || !password) {
-            console.log('❌ Missing email or password');
             return res.status(400).json({ 
                 success: false,
                 message: 'Email and password are required' 
             });
         }
 
-        console.log('🔍 Searching for user in database...');
-        console.log('📧 Looking for email:', email.toLowerCase().trim());
-
-        // Find user
+        console.log('🔍 Searching for user...');
         const user = await User.findOne({ 
             email: email.toLowerCase().trim() 
         });
 
         if (!user) {
-            console.log('❌ User not found for email:', email);
+            console.log('❌ User not found:', email);
             return res.status(401).json({ 
                 success: false,
                 message: 'Invalid credentials' 
             });
         }
 
-        console.log('✅ User found!');
-        console.log('👤 Username:', user.username);
-        console.log('📧 Email:', user.email);
-        console.log('🔑 Role:', user.role);
-        console.log('🔐 Hashed password in DB:', user.password ? user.password.substring(0, 25) + '...' : 'No password!');
-        console.log('🔐 Password hash length:', user.password?.length || 0);
-
-        console.log('🔍 Comparing passwords with bcrypt...');
+        console.log('✅ User found:', user.email);
+        console.log('🔐 Comparing passwords...');
         
-        let isMatch = false;
-        try {
-            isMatch = await bcrypt.compare(password, user.password);
-            console.log('🔐 Password match result:', isMatch);
-        } catch (bcryptError) {
-            console.error('❌ Bcrypt comparison error:', bcryptError);
-            return res.status(500).json({ 
-                success: false,
-                message: 'Password verification error',
-                error: bcryptError.message 
-            });
-        }
+        const isMatch = await bcrypt.compare(password, user.password);
+        console.log('🔐 Password match:', isMatch);
 
         if (!isMatch) {
-            console.log('❌ Password mismatch for user:', user.email);
+            console.log('❌ Password mismatch');
             return res.status(401).json({ 
                 success: false,
                 message: 'Invalid credentials' 
             });
         }
 
-        console.log('✅ Password matched successfully!');
-
-        // Check JWT_SECRET
         if (!process.env.JWT_SECRET) {
             console.error('❌ JWT_SECRET is not configured!');
             return res.status(500).json({ 
                 success: false,
-                message: 'Server configuration error - JWT_SECRET missing' 
+                message: 'Server configuration error' 
             });
         }
 
-        console.log('🔑 Generating JWT token...');
-
-        // Generate token
-        const token = jwt.sign(
-            { 
-                id: user._id, 
-                email: user.email,
-                username: user.username,
-                role: user.role,
-                isAdmin: user.isAdmin || false
-            },
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' }
-        );
+        console.log('🔑 Generating token...');
+        const token = generateToken(user._id);
 
         console.log('✅ Token generated successfully');
-        console.log('🎫 Token preview:', token.substring(0, 30) + '...');
-
-        // Set cookie
-        try {
-            res.cookie('token', token, { 
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
-                maxAge: 7 * 24 * 60 * 60 * 1000
-            });
-            console.log('✅ Cookie set successfully');
-        } catch (cookieError) {
-            console.error('❌ Cookie error:', cookieError);
-            // Continue even if cookie fails
-        }
+        console.log('========================================');
 
         const response = {
             success: true,
@@ -158,14 +137,11 @@ router.post('/login', async (req, res) => {
             }
         };
 
-        console.log('📤 Sending success response');
-        console.log('========================================');
         res.status(200).json(response);
 
     } catch (error) {
         console.error('💥 FATAL LOGIN ERROR:', error);
         console.error('📚 Stack trace:', error.stack);
-        console.log('========================================');
         
         res.status(500).json({ 
             success: false,
@@ -174,77 +150,108 @@ router.post('/login', async (req, res) => {
         });
     }
 });
-// all users 
 
+// Logout
+router.post('/logout', (req, res) => {
+    res.status(200).json({ 
+        success: true,
+        message: 'Logged out successfully'
+    });
+});
+
+// Get all users
 router.get('/users', async (req, res) => {
     try {
-        const users = await User.find({}, 'id email role').sort({ createdAt: -1 });
-        res.status(200).send(users);
+        const users = await User.find({}, 'id email role username profileImage').sort({ createdAt: -1 });
+        res.status(200).json(users);
     } catch (error) {
         console.error('Error fetching users:', error);
-        res.status(500).send({ message: 'Failed to fetch users' });
+        res.status(500).json({ 
+            success: false,
+            message: 'Failed to fetch users' 
+        });
     }
 });
 
-// delete a user
+// Delete user
 router.delete('/users/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const user = await User.findByIdAndDelete(id);
         if (!user) {
-            return res.status(404).send({ message: 'User not found' });
+            return res.status(404).json({ 
+                success: false,
+                message: 'User not found' 
+            });
         }
-        res.status(200).send({ message: 'User deleted successfully' });
+        res.status(200).json({ 
+            success: true,
+            message: 'User deleted successfully' 
+        });
     } catch (error) {
         console.error('Error deleting user:', error);
-        res.status(500).send({ message: 'Failed to delete user' });
+        res.status(500).json({ 
+            success: false,
+            message: 'Failed to delete user' 
+        });
     }
-})
+});
 
-// update a user role
+// Update user role
 router.put('/users/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { role } = req.body;
         const user = await User.findByIdAndUpdate(id, { role }, { new: true });
         if (!user) {
-            return res.status(404).send({ message: 'User not found' });
+            return res.status(404).json({ 
+                success: false,
+                message: 'User not found' 
+            });
         }
-        res.status(200).send({ message: 'User role updated successfully', user });
+        res.status(200).json({ 
+            success: true,
+            message: 'User role updated successfully', 
+            user 
+        });
     } catch (error) {
         console.error('Error updating user role:', error);
-        res.status(500).send({ message: 'Failed to update user role' });
+        res.status(500).json({ 
+            success: false,
+            message: 'Failed to update user role' 
+        });
     }
 });
 
-// Edit Profile endpoint
+// Edit Profile
 router.patch('/edit-profile', async (req, res) => {
     try {
-        // Destructure fields from the request body
         const { userId, username, profileImage, bio, profession } = req.body;
 
-        // Check if userId is provided
         if (!userId) {
-            return res.status(400).send({ message: 'User ID is required' });
+            return res.status(400).json({ 
+                success: false,
+                message: 'User ID is required' 
+            });
         }
 
-        // Find user by ID
         const user = await User.findById(userId);
         if (!user) {
-            return res.status(404).send({ message: 'User not found' });
+            return res.status(404).json({ 
+                success: false,
+                message: 'User not found' 
+            });
         }
 
-        // Update the user's profile with provided fields
         if (username !== undefined) user.username = username;
         if (profileImage !== undefined) user.profileImage = profileImage;
         if (bio !== undefined) user.bio = bio;
         if (profession !== undefined) user.profession = profession;
 
-        // Save the updated user profile
         await user.save();
 
-        // Send the updated user profile as the response
-        res.status(200).send({
+        res.status(200).json({
+            success: true,
             message: 'Profile updated successfully',
             user: {
                 _id: user._id,
@@ -258,7 +265,43 @@ router.patch('/edit-profile', async (req, res) => {
         });
     } catch (error) {
         console.error('Error updating profile:', error);
-        res.status(500).send({ message: 'Profile update failed' });
+        res.status(500).json({ 
+            success: false,
+            message: 'Profile update failed' 
+        });
+    }
+});
+
+// Debug endpoint
+router.get('/debug', async (req, res) => {
+    try {
+        const dbStatus = mongoose.connection.readyState;
+        const dbName = mongoose.connection.db?.databaseName;
+        const userCount = await User.countDocuments();
+        const user = await User.findOne({ email: "shahzaibjanjua25@gmail.com" });
+        
+        res.json({
+            success: true,
+            database: {
+                connected: dbStatus === 1,
+                readyState: dbStatus,
+                name: dbName
+            },
+            userCount: userCount,
+            userFound: !!user,
+            user: user ? {
+                email: user.email,
+                username: user.username,
+                hasPassword: !!user.password,
+                passwordLength: user.password?.length,
+                role: user.role
+            } : null
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
 });
 
