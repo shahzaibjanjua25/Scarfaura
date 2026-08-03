@@ -50,7 +50,7 @@ app.post('/uploadImage', (req, res) => {
 
 // Root route
 app.get('/', (req, res) => {
-  res.send('Scarfaura  Server is Running..!');
+  res.send('Scarfaura Kids Clothing Store Ecommerce Server is Running..!');
 });
 
 // DB connection
