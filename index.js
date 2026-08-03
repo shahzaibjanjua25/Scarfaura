@@ -21,10 +21,10 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(
   cors({
     origin: [
-      'https://scarfaura-frontend.vercel.app',
+      // 'https://scarfaura-frontend.vercel.app',
       // 'https://scarfaura.vercel.app',
-      // 'https://www.scarfaura.com',
-      'http://localhost:5173',//do
+      'https://www.scarfaura.com'
+      // 'http://localhost:5173'//do
       //  'https://scarfaura.vercel.app'
     ],
     credentials: true,
