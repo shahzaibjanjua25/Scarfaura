@@ -3,6 +3,13 @@ const router = express.Router();
 const User = require('./user.model');
 const generateToken = require('../middleware/generateToken');
 const verifyToken = require('../middleware/verifyToken');
+const express = require('express');
+const router = express.Router();
+const bcrypt = require('bcryptjs');  
+const jwt = require('jsonwebtoken'); 
+const User = require('./user.model');
+const mongoose = require('mongoose'); 
+require('dotenv').config();
 require('dotenv').config()
 
 
