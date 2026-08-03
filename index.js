@@ -22,6 +22,7 @@ app.use(
   cors({
     origin: [
       'https://scarfaura-frontend.vercel.app',
+      'https://scarfaura.vercel.app',
       'https://www.scarfaura.com',
       'http://localhost:5173',//do
     ],
