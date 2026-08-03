@@ -20,36 +20,39 @@ router.post('/register', async (req, res) => {
 });
 
 // Login endpoint
-// routes/auth.js - Login route with detailed logging
+// In auth.js - Login route with detailed logging
 router.post('/login', async (req, res) => {
     console.log('========================================');
     console.log('🔐 LOGIN ATTEMPT RECEIVED');
-    console.log('📧 Email:', req.body.email);
-    console.log('🔑 Password length:', req.body.password?.length);
+    console.log('📧 Email:', req.body?.email);
+    console.log('🔑 Password provided:', req.body?.password ? 'Yes' : 'No');
     console.log('========================================');
-
+    
     try {
         const { email, password } = req.body;
 
         // Validate input
         if (!email || !password) {
             console.log('❌ Missing email or password');
-            return res.status(400).send({
+            return res.status(400).json({ 
                 success: false,
-                message: 'Email and password are required'
+                message: 'Email and password are required' 
             });
         }
 
         console.log('🔍 Searching for user in database...');
+        console.log('📧 Looking for email:', email.toLowerCase().trim());
 
         // Find user
-        const user = await User.findOne({ email: email.trim().toLowerCase() });
+        const user = await User.findOne({ 
+            email: email.toLowerCase().trim() 
+        });
 
         if (!user) {
             console.log('❌ User not found for email:', email);
-            return res.status(404).send({
+            return res.status(401).json({ 
                 success: false,
-                message: 'User not found'
+                message: 'Invalid credentials' 
             });
         }
 
@@ -57,45 +60,74 @@ router.post('/login', async (req, res) => {
         console.log('👤 Username:', user.username);
         console.log('📧 Email:', user.email);
         console.log('🔑 Role:', user.role);
-        console.log('🔐 Password hash in DB:', user.password.substring(0, 25) + '...');
-        console.log('🔐 Password hash length:', user.password.length);
+        console.log('🔐 Hashed password in DB:', user.password ? user.password.substring(0, 25) + '...' : 'No password!');
+        console.log('🔐 Password hash length:', user.password?.length || 0);
 
-        console.log('🔍 Comparing passwords...');
-        const isMatch = await bcrypt.compare(password, user.password);
-        console.log('🔐 Password match result:', isMatch);
-
-        if (!isMatch) {
-            console.log('❌ Password mismatch for user:', user.email);
-            return res.status(401).send({
+        console.log('🔍 Comparing passwords with bcrypt...');
+        
+        let isMatch = false;
+        try {
+            isMatch = await bcrypt.compare(password, user.password);
+            console.log('🔐 Password match result:', isMatch);
+        } catch (bcryptError) {
+            console.error('❌ Bcrypt comparison error:', bcryptError);
+            return res.status(500).json({ 
                 success: false,
-                message: 'Invalid credentials'
+                message: 'Password verification error',
+                error: bcryptError.message 
             });
         }
 
-        console.log('✅ Password matched!');
+        if (!isMatch) {
+            console.log('❌ Password mismatch for user:', user.email);
+            return res.status(401).json({ 
+                success: false,
+                message: 'Invalid credentials' 
+            });
+        }
+
+        console.log('✅ Password matched successfully!');
+
+        // Check JWT_SECRET
+        if (!process.env.JWT_SECRET) {
+            console.error('❌ JWT_SECRET is not configured!');
+            return res.status(500).json({ 
+                success: false,
+                message: 'Server configuration error - JWT_SECRET missing' 
+            });
+        }
+
         console.log('🔑 Generating JWT token...');
 
         // Generate token
         const token = jwt.sign(
-            {
-                id: user._id,
+            { 
+                id: user._id, 
                 email: user.email,
                 username: user.username,
-                role: user.role
+                role: user.role,
+                isAdmin: user.isAdmin || false
             },
             process.env.JWT_SECRET,
             { expiresIn: '7d' }
         );
 
         console.log('✅ Token generated successfully');
-        console.log('🎫 Token:', token.substring(0, 20) + '...');
+        console.log('🎫 Token preview:', token.substring(0, 30) + '...');
 
         // Set cookie
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax'
-        });
+        try {
+            res.cookie('token', token, { 
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
+                maxAge: 7 * 24 * 60 * 60 * 1000
+            });
+            console.log('✅ Cookie set successfully');
+        } catch (cookieError) {
+            console.error('❌ Cookie error:', cookieError);
+            // Continue even if cookie fails
+        }
 
         const response = {
             success: true,
@@ -113,33 +145,22 @@ router.post('/login', async (req, res) => {
             }
         };
 
-        console.log('📤 Sending response');
+        console.log('📤 Sending success response');
         console.log('========================================');
-        res.status(200).send(response);
+        res.status(200).json(response);
 
     } catch (error) {
         console.error('💥 FATAL LOGIN ERROR:', error);
         console.error('📚 Stack trace:', error.stack);
         console.log('========================================');
-
-        res.status(500).send({
+        
+        res.status(500).json({ 
             success: false,
             message: 'Login failed',
             error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
         });
     }
 });
-// Logout endpoint
-router.post('/logout', (req, res) => {
-    res.clearCookie('token');
-    res.status(200).json({
-        success: true,
-        message: 'Logged out successfully',
-        showPopup: true,
-        popupMessage: 'You have been logged out successfully!'
-    });
-});
-
 // all users 
 
 router.get('/users', async (req, res) => {
