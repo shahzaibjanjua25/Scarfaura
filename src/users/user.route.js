@@ -20,45 +20,119 @@ router.post('/register', async (req, res) => {
 });
 
 // Login endpoint
+// routes/auth.js - Login route with detailed logging
 router.post('/login', async (req, res) => {
+    console.log('========================================');
+    console.log('🔐 LOGIN ATTEMPT RECEIVED');
+    console.log('📧 Email:', req.body.email);
+    console.log('🔑 Password length:', req.body.password?.length);
+    console.log('========================================');
+
     try {
-        // console.log(req.body)
         const { email, password } = req.body;
-        const user = await User.findOne({ email });
-        // console.log(user._id)
+
+        // Validate input
+        if (!email || !password) {
+            console.log('❌ Missing email or password');
+            return res.status(400).send({
+                success: false,
+                message: 'Email and password are required'
+            });
+        }
+
+        console.log('🔍 Searching for user in database...');
+
+        // Find user
+        const user = await User.findOne({ email: email.trim().toLowerCase() });
+
         if (!user) {
-            return res.status(404).send({ message: 'User not found' });
+            console.log('❌ User not found for email:', email);
+            return res.status(404).send({
+                success: false,
+                message: 'User not found'
+            });
         }
-        const isMatch = await user.comparePassword(password);
+
+        console.log('✅ User found!');
+        console.log('👤 Username:', user.username);
+        console.log('📧 Email:', user.email);
+        console.log('🔑 Role:', user.role);
+        console.log('🔐 Password hash in DB:', user.password.substring(0, 25) + '...');
+        console.log('🔐 Password hash length:', user.password.length);
+
+        console.log('🔍 Comparing passwords...');
+        const isMatch = await bcrypt.compare(password, user.password);
+        console.log('🔐 Password match result:', isMatch);
+
         if (!isMatch) {
-            return res.status(401).send({ message: 'Invalid credentials' });
+            console.log('❌ Password mismatch for user:', user.email);
+            return res.status(401).send({
+                success: false,
+                message: 'Invalid credentials'
+            });
         }
 
-        
-        const token = await generateToken(user._id); 
+        console.log('✅ Password matched!');
+        console.log('🔑 Generating JWT token...');
 
-        res.cookie('token', token, { httpOnly: true,
-            secure: true, // Ensure this is true for HTTPS
-            sameSite: 'None'});
-        res.status(200).send({ message: 'Logged in successfully', token, user: {
-            _id: user._id,
-            email: user.email,
-            username: user.username,
-            role: user.role,
-            profileImage: user.profileImage,
-            bio: user.bio,
-            profession: user.profession,
-        } });
+        // Generate token
+        const token = jwt.sign(
+            {
+                id: user._id,
+                email: user.email,
+                username: user.username,
+                role: user.role
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        console.log('✅ Token generated successfully');
+        console.log('🎫 Token:', token.substring(0, 20) + '...');
+
+        // Set cookie
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax'
+        });
+
+        const response = {
+            success: true,
+            message: 'Logged in successfully',
+            token,
+            user: {
+                _id: user._id,
+                email: user.email,
+                username: user.username,
+                role: user.role,
+                profileImage: user.profileImage || '',
+                bio: user.bio || '',
+                profession: user.profession || '',
+                isAdmin: user.isAdmin || false
+            }
+        };
+
+        console.log('📤 Sending response');
+        console.log('========================================');
+        res.status(200).send(response);
+
     } catch (error) {
-        console.error('Error logging in:', error);
-        res.status(500).send({ message: 'Login failed' });
+        console.error('💥 FATAL LOGIN ERROR:', error);
+        console.error('📚 Stack trace:', error.stack);
+        console.log('========================================');
+
+        res.status(500).send({
+            success: false,
+            message: 'Login failed',
+            error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+        });
     }
 });
-
 // Logout endpoint
 router.post('/logout', (req, res) => {
-    res.clearCookie('token'); 
-    res.status(200).json({ 
+    res.clearCookie('token');
+    res.status(200).json({
         success: true,
         message: 'Logged out successfully',
         showPopup: true,
