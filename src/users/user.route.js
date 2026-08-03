@@ -25,7 +25,13 @@ router.post('/register', async (req, res) => {
         res.status(500).send({ message: 'Registration failed. User already Exits' });
     }
 });
-
+router.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Requested-With');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.sendStatus(200);
+});
 // Login endpoint
 // In auth.js - Login route with detailed logging
 router.post('/login', async (req, res) => {
