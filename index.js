@@ -25,6 +25,7 @@ app.use(
       'https://scarfaura.vercel.app',
       'https://www.scarfaura.com',
       'http://localhost:5173',//do
+       'https://scarfaura.vercel.app'
     ],
     credentials: true,
   })
