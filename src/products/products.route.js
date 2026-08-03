@@ -35,8 +35,8 @@ router.post("/create-product", async (req, res) => {
 });
 
 // Get all posts (public route)
+// Get all products (public route)
 router.get("/", async (req, res) => {
-  // console.log("🔍 Raw query params:", req.query);
   try {
     const { category, color, minPrice, age, maxPrice, page = 1, limit = 10 } = req.query;
 
@@ -49,10 +49,9 @@ router.get("/", async (req, res) => {
     if (color && color !== "all") {
       filter.color = color;
     }
-    //testing deployments
 
     if (age && age !== "all") {
-      filter.age = parseInt(age); // Ensure age is a number
+      filter.age = parseInt(age);
     }
 
     const min = parseFloat(minPrice);
@@ -66,23 +65,36 @@ router.get("/", async (req, res) => {
       filter.price = { $lte: max };
     }
 
-    // ✅ Add this log here
-    // console.log("Final Filter:", filter);
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const totalProducts = await Products.countDocuments(filter);
     const totalPages = Math.ceil(totalProducts / parseInt(limit));
 
-    const products = await Products.find(filter)
+    // Fix: Handle missing author gracefully
+    let products = await Products.find(filter)
       .skip(skip)
       .limit(parseInt(limit))
-      .populate("author", "email")
       .sort({ createdAt: -1 });
 
-    res.status(200).send({ products, totalPages, totalProducts });
+    // Try to populate author if it exists, but don't fail if it doesn't
+    try {
+      products = await Products.populate(products, {
+        path: "author",
+        select: "email username",
+        options: { strictPopulate: false }
+      });
+    } catch (populateError) {
+      console.log("⚠️ Could not populate author:", populateError.message);
+      // Continue without author data
+    }
+
+    res.status(200).json({ products, totalPages, totalProducts });
   } catch (error) {
-    console.error("Error fetching products:", error);
-    res.status(500).send({ message: "Failed to fetch products" });
+    console.error("❌ Error fetching products:", error);
+    console.error("❌ Error stack:", error.stack);
+    res.status(500).json({ 
+      message: "Failed to fetch products",
+      error: error.message 
+    });
   }
 });
 
