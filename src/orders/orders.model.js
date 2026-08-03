@@ -6,7 +6,7 @@ const ShippingAddressSchema = new mongoose.Schema({
   city:    { type: String, required: true },
   state:   { type: String, required: true },
   zipCode: { type: String, required: true },
-}, { _id: false }); // prevent _id generation for subdoc
+}, { _id: false });
 
 // Main order schema
 const orderSchema = new mongoose.Schema(
@@ -14,7 +14,14 @@ const orderSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true
+      required: false, // ✅ Change to false for guest checkout
+      default: null
+    },
+
+    // ✅ Add customerName for guest checkout
+    customerName: {
+      type: String,
+      default: ''
     },
 
     orderId: {
@@ -50,14 +57,13 @@ const orderSchema = new mongoose.Schema(
       default: "pending"
     },
 
-    paymentMethod: { type: String },
+    paymentMethod: { type: String, default: "Cash on Delivery" },
 
-    specialInstructions: { type: String }
+    specialInstructions: { type: String, default: "" }
   },
   { timestamps: true }
 );
 
-// Create the model
 const Order = mongoose.model("Order", orderSchema);
 
 module.exports = Order;

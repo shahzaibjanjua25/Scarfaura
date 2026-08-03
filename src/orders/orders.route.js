@@ -2,7 +2,7 @@ const express = require("express");
 const Order = require("./orders.model");
 const router = express.Router();
 
-// Create Order (with required user field)
+// Create Order - Allow Guest Checkout
 router.post("/create-order", async (req, res) => {
   const {
     user,
@@ -12,42 +12,56 @@ router.post("/create-order", async (req, res) => {
     shippingAddress,
     paymentMethod,
     amount,
-    specialInstructions
+    specialInstructions,
+    customerName
   } = req.body;
 
   try {
-    // Validate required fields
-    if (!user || !products || !email || !phone || !shippingAddress) {
-      return res.status(400).json({
-        error: "User, products, email, phone, and shipping address are required"
-      });
+    // ✅ Validate required fields (user is now OPTIONAL)
+    if (!products || products.length === 0) {
+      return res.status(400).json({ error: "Products are required" });
+    }
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    if (!phone) {
+      return res.status(400).json({ error: "Phone number is required" });
+    }
+
+    if (!shippingAddress || !shippingAddress.address) {
+      return res.status(400).json({ error: "Shipping address is required" });
     }
 
     // Generate order ID
     const orderId = 'ORD-' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 1000);
 
-    // Create new order
+    // ✅ Create new order - user is optional
     const order = new Order({
-      user,
+      // Only include user if provided
+      ...(user && { user }),
+      // If user not provided, user will be null (default from schema)
       orderId,
       products: products.map(product => ({
-        productId: product._id || product.productId,
+        productId: product.productId || product._id,
         name: product.name,
-        image: product.image,
-        price: product.price,
-        quantity: product.quantity
+        image: product.image || "",
+        price: Number(product.price) || 0,
+        quantity: Number(product.quantity) || 1
       })),
-      amount,
-      email,
-      phone,
+      amount: Number(amount) || 0,
+      email: email.trim(),
+      phone: phone.trim(),
       shippingAddress: {
-        address: shippingAddress.address,
-        city: shippingAddress.city,
-        state: shippingAddress.state,
-        zipCode: shippingAddress.zipCode
+        address: shippingAddress.address.trim(),
+        city: shippingAddress.city?.trim() || "",
+        state: shippingAddress.state?.trim() || "",
+        zipCode: shippingAddress.zipCode?.trim() || ""
       },
       paymentMethod: paymentMethod || "Cash on Delivery",
       specialInstructions: specialInstructions || "",
+      customerName: customerName || "", // ✅ Store customer name for guest checkout
       status: "pending"
     });
 
@@ -68,6 +82,7 @@ router.post("/create-order", async (req, res) => {
   }
 });
 
+// ... rest of your routes remain the same
 
 // Add a new route for checkout validation
 router.post("/validate-checkout", async (req, res) => {
