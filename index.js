@@ -1,5 +1,23 @@
-// File: index.js
-require('dotenv').config();
+// ============================================================
+// index.js - CLEAN VERSION WITH DNS FIX
+// ============================================================
+
+// ✅ FIX: Force DNS servers BEFORE anything else
+const dns = require('node:dns/promises');
+dns.setServers(['1.1.1.1', '8.8.8.8']);
+console.log('✅ DNS servers set to Cloudflare (1.1.1.1) and Google (8.8.8.8)');
+
+// ✅ Load environment variables
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
+// ✅ Debug: Check if .env is loading correctly
+console.log('📁 Current directory:', __dirname);
+console.log('📁 .env path:', path.join(__dirname, '.env'));
+console.log('🔍 MONGODB_URL:', process.env.MONGODB_URL ? '✅ Loaded' : '❌ Not loaded');
+console.log('📝 MONGODB_URL value:', process.env.MONGODB_URL?.replace(/:[^:]*@/, ':****@'));
+
+// ✅ Import dependencies
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -17,7 +35,8 @@ const allowedOrigins = [
   'https://www.scarfaura.com',
   'https://scarfaura.com',
   'https://scarfaura-frontend.vercel.app',
-  // 'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5173',
   'http://localhost:3000'
 ];
 
@@ -37,14 +56,14 @@ app.use((req, res, next) => {
   // Handle preflight OPTIONS requests immediately
   if (req.method === 'OPTIONS') {
     console.log('✅ OPTIONS request handled:', req.url);
-    return res.sendStatus(200); // ← Return 200 OK for OPTIONS
+    return res.sendStatus(200);
   }
   
   next();
 });
 
 // ============================================
-// Regular Middleware (after CORS)
+// Regular Middleware
 // ============================================
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
@@ -82,7 +101,7 @@ app.post('/uploadImage', (req, res) => {
 
 // Root route
 app.get('/', (req, res) => {
-  res.send('Scarfaura Kids Clothing Store Ecommerce Server is Running..!');
+  res.send('Scarfaura Backend is Running..!');
 });
 
 // ============================================
@@ -122,4 +141,8 @@ app.listen(port, () => {
 // ============================================
 process.on('unhandledRejection', (error) => {
   console.error('💥 Unhandled Rejection:', error);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('💥 Uncaught Exception:', error);
 });

@@ -23,7 +23,7 @@ async function checkProducts() {
       const products = await Product.find().limit(3);
       console.log('📋 Sample products:');
       products.forEach((p, i) => {
-        console.log(  .  - create-user.js{p.price});
+        // console.log(  .  - create-user.js{p.price});
       });
     } else {
       console.log('⚠️ No products found in database!');
