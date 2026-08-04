@@ -17,7 +17,7 @@ const allowedOrigins = [
   'https://www.scarfaura.com',
   'https://scarfaura.com',
   'https://scarfaura-frontend.vercel.app',
-  'http://localhost:5173',
+  // 'http://localhost:5173',
   'http://localhost:3000'
 ];
 
