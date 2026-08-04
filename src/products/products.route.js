@@ -1,110 +1,109 @@
 // products.route.js
 const express = require("express");
+const mongoose = require("mongoose");
 const Products = require("./products.model");
 const Reviews = require("../reviews/reviews.model");
 const router = express.Router();
 
-/* ------------------------------------------------------------------
-   Normalisers
-   These accept whatever shape the client sends — a real array, a JSON
-   string ("[\"a\",\"b\"]"), a comma list ("a,b"), or a bare string —
-   and always return a clean, de-duplicated array. This is what stops
-   a multi-select silently collapsing to one value.
--------------------------------------------------------------------*/
-
-const toArray = (value) => {
-  if (value === undefined || value === null) return [];
-
-  if (Array.isArray(value)) {
-    return [...new Set(value.map((v) => String(v).trim()).filter(Boolean))];
-  }
-
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return [];
-
-    // JSON-encoded array, e.g. sent through multipart/form-data
-    if (trimmed.startsWith("[")) {
-      try {
-        return toArray(JSON.parse(trimmed));
-      } catch {
-        /* fall through to comma split */
-      }
-    }
-    return toArray(trimmed.split(","));
-  }
-
-  return [];
-};
-
-// Returns { categories, category } with the primary guaranteed to be
-// present in the array and listed first.
-const normalizeCategories = (categories, category) => {
-  const list = toArray(categories);
-  const primary = (typeof category === "string" && category.trim()) || list[0] || null;
-
-  if (!primary) return { categories: [], category: null };
-
-  const ordered = [primary, ...list.filter((c) => c !== primary)];
-  return { categories: [...new Set(ordered)], category: primary };
-};
-
-// Returns { images, image } with image mirroring images[0].
-const normalizeImages = (images, image) => {
-  const list = toArray(images);
-  const merged = image && !list.includes(image) ? [image, ...list] : list;
-  return { images: merged, image: merged[0] || null };
-};
-
-/* ------------------------------------------------------------------
-   Create
--------------------------------------------------------------------*/
-
+// CREATE PRODUCT
 router.post("/create-product", async (req, res) => {
   try {
+    console.log('📥 === CREATE PRODUCT ===');
+    console.log('📥 Body:', JSON.stringify(req.body, null, 2));
+
     const { categories, category, images, image, ...rest } = req.body;
 
-    const cats = normalizeCategories(categories, category);
-    if (!cats.category) {
+    // Ensure arrays
+    let categoriesArray = [];
+    if (Array.isArray(categories)) {
+      categoriesArray = categories;
+    } else if (typeof categories === 'string') {
+      categoriesArray = categories.split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    let imagesArray = [];
+    if (Array.isArray(images)) {
+      imagesArray = images;
+    } else if (typeof images === 'string') {
+      imagesArray = images.split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    // Get primary values
+    const primaryCategory = category || (categoriesArray.length > 0 ? categoriesArray[0] : null);
+    const primaryImage = image || (imagesArray.length > 0 ? imagesArray[0] : null);
+
+    console.log('📥 categoriesArray:', categoriesArray);
+    console.log('📥 imagesArray:', imagesArray);
+
+    // Validate
+    if (!primaryCategory || categoriesArray.length === 0) {
       return res.status(400).json({
         success: false,
         message: "At least one category is required"
       });
     }
 
-    const imgs = normalizeImages(images, image);
-    if (imgs.images.length === 0) {
+    if (imagesArray.length === 0) {
       return res.status(400).json({
         success: false,
         message: "At least one product image is required"
       });
     }
 
-    const newProduct = new Products({
-      ...rest,
-      category: cats.category,
-      categories: cats.categories,
-      images: imgs.images,
-      image: imgs.image
-    });
+    // ✅ Create product with explicit fields
+    const productData = {
+      name: rest.name || '',
+      description: rest.description || '',
+      price: Number(rest.price) || 0,
+      oldPrice: rest.oldPrice ? Number(rest.oldPrice) : null,
+      color: rest.color || '',
+      author: rest.author,
+      // ✅ CRITICAL: Set the arrays explicitly
+      categories: categoriesArray,
+      category: primaryCategory,
+      images: imagesArray,
+      image: primaryImage
+    };
 
+    console.log('💾 Product data to save:', JSON.stringify(productData, null, 2));
+
+    // ✅ Create and save
+    const newProduct = new Products(productData);
     const savedProduct = await newProduct.save();
 
-    // Average rating (a brand-new product has none, but harmless to keep)
-    const reviews = await Reviews.find({ productId: savedProduct._id });
-    if (reviews.length > 0) {
-      const totalRating = reviews.reduce((acc, r) => acc + r.rating, 0);
-      savedProduct.rating = totalRating / reviews.length;
-      await savedProduct.save();
-    }
+    console.log('✅ Product saved!');
+    console.log('✅ ID:', savedProduct._id);
+    console.log('✅ categories:', savedProduct.categories);
+    console.log('✅ images:', savedProduct.images);
+
+    // ✅ Force the arrays to be included in the response
+    const responseData = {
+      _id: savedProduct._id,
+      name: savedProduct.name,
+      description: savedProduct.description,
+      price: savedProduct.price,
+      oldPrice: savedProduct.oldPrice,
+      color: savedProduct.color,
+      author: savedProduct.author,
+      category: savedProduct.category,
+      image: savedProduct.image,
+      categories: savedProduct.categories || [],
+      images: savedProduct.images || [],
+      rating: savedProduct.rating,
+      createdAt: savedProduct.createdAt,
+      updatedAt: savedProduct.updatedAt,
+      __v: savedProduct.__v
+    };
+
+    console.log('📤 Response data:', JSON.stringify(responseData, null, 2));
 
     res.status(201).json({
       success: true,
       message: "Product created successfully",
-      product: savedProduct
+      product: responseData
     });
   } catch (error) {
-    console.error("Error creating product:", error);
+    console.error("❌ Error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to create product",
@@ -113,10 +112,7 @@ router.post("/create-product", async (req, res) => {
   }
 });
 
-/* ------------------------------------------------------------------
-   List
--------------------------------------------------------------------*/
-
+// LIST PRODUCTS
 router.get("/", async (req, res) => {
   try {
     const { category, color, minPrice, maxPrice, page = 1, limit = 10 } = req.query;
@@ -124,12 +120,11 @@ router.get("/", async (req, res) => {
     const filter = {};
     const conditions = [];
 
-    // Accepts one category or several: ?category=A or ?category=A,B
     if (category && category !== "all") {
-      const wanted = toArray(category);
-      if (wanted.length > 0) {
+      const categories = typeof category === 'string' ? category.split(',').map(s => s.trim()) : [category];
+      if (categories.length > 0) {
         conditions.push({
-          $or: [{ category: { $in: wanted } }, { categories: { $in: wanted } }]
+          $or: [{ category: { $in: categories } }, { categories: { $in: categories } }]
         });
       }
     }
@@ -148,7 +143,6 @@ router.get("/", async (req, res) => {
       conditions.push({ price: { $lte: max } });
     }
 
-    // $and keeps each filter independent — a second $or can't clobber the first
     if (conditions.length > 0) filter.$and = conditions;
 
     const pageNum = Math.max(parseInt(page, 10) || 1, 1);
@@ -183,10 +177,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-/* ------------------------------------------------------------------
-   Single
--------------------------------------------------------------------*/
-
+// GET SINGLE PRODUCT
 router.get("/:id", async (req, res) => {
   try {
     const productId = req.params.id;
@@ -212,10 +203,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-/* ------------------------------------------------------------------
-   Update
--------------------------------------------------------------------*/
-
+// UPDATE PRODUCT
 router.patch("/update-product/:id", async (req, res) => {
   try {
     const productId = req.params.id;
@@ -228,30 +216,44 @@ router.patch("/update-product/:id", async (req, res) => {
 
     const updates = { ...rest };
 
-    // Only touch categories if the client actually sent some
     if (categories !== undefined || category !== undefined) {
-      const cats = normalizeCategories(
-        categories !== undefined ? categories : existingProduct.categories,
-        category !== undefined ? category : existingProduct.category
-      );
-      if (!cats.category) {
+      let categoriesArray = [];
+      if (Array.isArray(categories)) {
+        categoriesArray = categories;
+      } else if (typeof categories === 'string') {
+        categoriesArray = categories.split(',').map(s => s.trim()).filter(Boolean);
+      } else {
+        categoriesArray = existingProduct.categories || [];
+      }
+      
+      const primaryCategory = category || (categoriesArray.length > 0 ? categoriesArray[0] : existingProduct.category);
+      
+      if (!primaryCategory || categoriesArray.length === 0) {
         return res.status(400).send({ message: "At least one category is required" });
       }
-      updates.category = cats.category;
-      updates.categories = cats.categories;
+      
+      updates.category = primaryCategory;
+      updates.categories = categoriesArray;
     }
 
-    // Same for images — an explicit empty array is a valid "remove all"
     if (images !== undefined || image !== undefined) {
-      const imgs = normalizeImages(
-        images !== undefined ? images : existingProduct.images,
-        image !== undefined ? image : existingProduct.image
-      );
-      if (imgs.images.length === 0) {
+      let imagesArray = [];
+      if (Array.isArray(images)) {
+        imagesArray = images;
+      } else if (typeof images === 'string') {
+        imagesArray = images.split(',').map(s => s.trim()).filter(Boolean);
+      } else {
+        imagesArray = existingProduct.images || [];
+      }
+      
+      const primaryImage = image || (imagesArray.length > 0 ? imagesArray[0] : existingProduct.image);
+      
+      if (imagesArray.length === 0) {
         return res.status(400).send({ message: "At least one product image is required" });
       }
-      updates.images = imgs.images;
-      updates.image = imgs.image;
+      
+      updates.images = imagesArray;
+      updates.image = primaryImage;
     }
 
     const updatedProduct = await Products.findByIdAndUpdate(
@@ -270,10 +272,7 @@ router.patch("/update-product/:id", async (req, res) => {
   }
 });
 
-/* ------------------------------------------------------------------
-   Delete
--------------------------------------------------------------------*/
-
+// DELETE PRODUCT
 router.delete("/:id", async (req, res) => {
   try {
     const productId = req.params.id;
@@ -294,10 +293,7 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-/* ------------------------------------------------------------------
-   Related
--------------------------------------------------------------------*/
-
+// RELATED PRODUCTS
 router.get("/related/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -310,8 +306,6 @@ router.get("/related/:id", async (req, res) => {
     const words = product.name
       .split(" ")
       .filter((word) => word.length > 1)
-      // escape regex metacharacters so a product named "Silk (Ltd.)"
-      // can't throw or match unintended documents
       .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 
     const orConditions = [];
@@ -319,7 +313,6 @@ router.get("/related/:id", async (req, res) => {
       orConditions.push({ name: { $regex: new RegExp(words.join("|"), "i") } });
     }
 
-    // Match on every category the product belongs to, not just the primary
     const allCats = product.categories?.length ? product.categories : [product.category];
     orConditions.push({ category: { $in: allCats } });
     orConditions.push({ categories: { $in: allCats } });
