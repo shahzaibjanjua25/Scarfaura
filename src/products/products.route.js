@@ -1,82 +1,168 @@
+// products.route.js
 const express = require("express");
 const Products = require("./products.model");
 const Reviews = require("../reviews/reviews.model");
 const router = express.Router();
 
-// post a product
+/* ------------------------------------------------------------------
+   Normalisers
+   These accept whatever shape the client sends — a real array, a JSON
+   string ("[\"a\",\"b\"]"), a comma list ("a,b"), or a bare string —
+   and always return a clean, de-duplicated array. This is what stops
+   a multi-select silently collapsing to one value.
+-------------------------------------------------------------------*/
+
+const toArray = (value) => {
+  if (value === undefined || value === null) return [];
+
+  if (Array.isArray(value)) {
+    return [...new Set(value.map((v) => String(v).trim()).filter(Boolean))];
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    // JSON-encoded array, e.g. sent through multipart/form-data
+    if (trimmed.startsWith("[")) {
+      try {
+        return toArray(JSON.parse(trimmed));
+      } catch {
+        /* fall through to comma split */
+      }
+    }
+    return toArray(trimmed.split(","));
+  }
+
+  return [];
+};
+
+// Returns { categories, category } with the primary guaranteed to be
+// present in the array and listed first.
+const normalizeCategories = (categories, category) => {
+  const list = toArray(categories);
+  const primary = (typeof category === "string" && category.trim()) || list[0] || null;
+
+  if (!primary) return { categories: [], category: null };
+
+  const ordered = [primary, ...list.filter((c) => c !== primary)];
+  return { categories: [...new Set(ordered)], category: primary };
+};
+
+// Returns { images, image } with image mirroring images[0].
+const normalizeImages = (images, image) => {
+  const list = toArray(images);
+  const merged = image && !list.includes(image) ? [image, ...list] : list;
+  return { images: merged, image: merged[0] || null };
+};
+
+/* ------------------------------------------------------------------
+   Create
+-------------------------------------------------------------------*/
+
 router.post("/create-product", async (req, res) => {
   try {
-    const { name } = req.body;
+    const { categories, category, images, image, ...rest } = req.body;
 
-    // Create a new product instance
+    const cats = normalizeCategories(categories, category);
+    if (!cats.category) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one category is required"
+      });
+    }
+
+    const imgs = normalizeImages(images, image);
+    if (imgs.images.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one product image is required"
+      });
+    }
+
     const newProduct = new Products({
-      ...req.body,
+      ...rest,
+      category: cats.category,
+      categories: cats.categories,
+      images: imgs.images,
+      image: imgs.image
     });
 
     const savedProduct = await newProduct.save();
 
-    // Calculate the average rating
+    // Average rating (a brand-new product has none, but harmless to keep)
     const reviews = await Reviews.find({ productId: savedProduct._id });
     if (reviews.length > 0) {
-      const totalRating = reviews.reduce(
-        (acc, review) => acc + review.rating,
-        0
-      );
-      const averageRating = totalRating / reviews.length;
-      savedProduct.rating = averageRating;
+      const totalRating = reviews.reduce((acc, r) => acc + r.rating, 0);
+      savedProduct.rating = totalRating / reviews.length;
       await savedProduct.save();
     }
 
-    res.status(201).json(savedProduct);
+    res.status(201).json({
+      success: true,
+      message: "Product created successfully",
+      product: savedProduct
+    });
   } catch (error) {
     console.error("Error creating product:", error);
-    res.status(500).json({ message: "Failed to create product" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to create product",
+      error: error.message
+    });
   }
 });
 
-// Get all posts (public route)
-// Get all products (public route)
+/* ------------------------------------------------------------------
+   List
+-------------------------------------------------------------------*/
+
 router.get("/", async (req, res) => {
   try {
-    // const { category, color, minPrice, age, maxPrice, page = 1, limit = 10 } = req.query;
     const { category, color, minPrice, maxPrice, page = 1, limit = 10 } = req.query;
 
     const filter = {};
+    const conditions = [];
 
+    // Accepts one category or several: ?category=A or ?category=A,B
     if (category && category !== "all") {
-      filter.category = category;
+      const wanted = toArray(category);
+      if (wanted.length > 0) {
+        conditions.push({
+          $or: [{ category: { $in: wanted } }, { categories: { $in: wanted } }]
+        });
+      }
     }
 
     if (color && color !== "all") {
-      filter.color = color;
+      conditions.push({ color });
     }
-
-    // if (age && age !== "all") {
-    //   filter.age = parseInt(age);
-    // }
 
     const min = parseFloat(minPrice);
     const max = parseFloat(maxPrice);
-
     if (!isNaN(min) && !isNaN(max)) {
-      filter.price = { $gte: min, $lte: max };
+      conditions.push({ price: { $gte: min, $lte: max } });
     } else if (!isNaN(min)) {
-      filter.price = { $gte: min };
+      conditions.push({ price: { $gte: min } });
     } else if (!isNaN(max)) {
-      filter.price = { $lte: max };
+      conditions.push({ price: { $lte: max } });
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const totalProducts = await Products.countDocuments(filter);
-    const totalPages = Math.ceil(totalProducts / parseInt(limit));
+    // $and keeps each filter independent — a second $or can't clobber the first
+    if (conditions.length > 0) filter.$and = conditions;
 
-    // Fix: Handle missing author gracefully
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100);
+    const skip = (pageNum - 1) * limitNum;
+
+    const totalProducts = await Products.countDocuments(filter);
+    const totalPages = Math.ceil(totalProducts / limitNum);
+
     let products = await Products.find(filter)
       .skip(skip)
-      .limit(parseInt(limit))
+      .limit(limitNum)
       .sort({ createdAt: -1 });
 
-    // Try to populate author if it exists, but don't fail if it doesn't
     try {
       products = await Products.populate(products, {
         path: "author",
@@ -84,14 +170,12 @@ router.get("/", async (req, res) => {
         options: { strictPopulate: false }
       });
     } catch (populateError) {
-      console.log("⚠️ Could not populate author:", populateError.message);
-      // Continue without author data
+      console.log("Could not populate author:", populateError.message);
     }
 
     res.status(200).json({ products, totalPages, totalProducts });
   } catch (error) {
-    console.error("❌ Error fetching products:", error);
-    console.error("❌ Error stack:", error.stack);
+    console.error("Error fetching products:", error);
     res.status(500).json({
       message: "Failed to fetch products",
       error: error.message
@@ -99,18 +183,18 @@ router.get("/", async (req, res) => {
   }
 });
 
+/* ------------------------------------------------------------------
+   Single
+-------------------------------------------------------------------*/
 
-// Get single post (public route)
 router.get("/:id", async (req, res) => {
   try {
     const productId = req.params.id;
-    // console.log(postId)
 
     const product = await Products.findById(productId).populate(
       "author",
       "email username"
     );
-    // console.log(post)
 
     if (!product) {
       return res.status(404).send({ message: "Product not found" });
@@ -123,98 +207,127 @@ router.get("/:id", async (req, res) => {
 
     res.status(200).send({ product, reviews });
   } catch (error) {
-    console.error("Error fetching post:", error);
-    res.status(500).send({ message: "Failed to fetch post" });
-  }
-});
-
-// update a post (protected route)
-router.patch("/update-product/:id", async (req, res) => {
-  try {
-    const productId = req.params.id;
-    // const { title, content, category } = req.body;
-    const updatedProduct = await Products.findByIdAndUpdate(
-      productId,
-      { ...req.body },
-      { new: true }
-    );
-
-    if (!updatedProduct) {
-      return res.status(404).send({ message: "Product not found" });
-    }
-
-    res
-      .status(200)
-      .send({
-        message: "Product updated successfully",
-        product: updatedProduct,
-      });
-  } catch (error) {
     console.error("Error fetching product:", error);
     res.status(500).send({ message: "Failed to fetch product" });
   }
 });
 
-// delete a post with the related comment
+/* ------------------------------------------------------------------
+   Update
+-------------------------------------------------------------------*/
+
+router.patch("/update-product/:id", async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const { categories, category, images, image, ...rest } = req.body;
+
+    const existingProduct = await Products.findById(productId);
+    if (!existingProduct) {
+      return res.status(404).send({ message: "Product not found" });
+    }
+
+    const updates = { ...rest };
+
+    // Only touch categories if the client actually sent some
+    if (categories !== undefined || category !== undefined) {
+      const cats = normalizeCategories(
+        categories !== undefined ? categories : existingProduct.categories,
+        category !== undefined ? category : existingProduct.category
+      );
+      if (!cats.category) {
+        return res.status(400).send({ message: "At least one category is required" });
+      }
+      updates.category = cats.category;
+      updates.categories = cats.categories;
+    }
+
+    // Same for images — an explicit empty array is a valid "remove all"
+    if (images !== undefined || image !== undefined) {
+      const imgs = normalizeImages(
+        images !== undefined ? images : existingProduct.images,
+        image !== undefined ? image : existingProduct.image
+      );
+      if (imgs.images.length === 0) {
+        return res.status(400).send({ message: "At least one product image is required" });
+      }
+      updates.images = imgs.images;
+      updates.image = imgs.image;
+    }
+
+    const updatedProduct = await Products.findByIdAndUpdate(
+      productId,
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).send({
+      message: "Product updated successfully",
+      product: updatedProduct
+    });
+  } catch (error) {
+    console.error("Error updating product:", error);
+    res.status(500).send({ message: "Failed to update product" });
+  }
+});
+
+/* ------------------------------------------------------------------
+   Delete
+-------------------------------------------------------------------*/
+
 router.delete("/:id", async (req, res) => {
   try {
     const productId = req.params.id;
 
-    // Find and delete the products collection
     const deletedProduct = await Products.findByIdAndDelete(productId);
-
     if (!deletedProduct) {
-      return res.status(404).send({ message: "Post not found" });
+      return res.status(404).send({ message: "Product not found" });
     }
 
-    // Delete associated comments
-    await Reviews.deleteMany({ productId: productId });
+    await Reviews.deleteMany({ productId });
 
-    res
-      .status(200)
-      .send({
-        message: "Product and associated comments deleted successfully",
-      });
+    res.status(200).send({
+      message: "Product and associated reviews deleted successfully"
+    });
   } catch (error) {
-    console.error("Error deleting post:", error);
-    res.status(500).send({ message: "Failed to delete post" });
+    console.error("Error deleting product:", error);
+    res.status(500).send({ message: "Failed to delete product" });
   }
 });
 
-// related products
+/* ------------------------------------------------------------------
+   Related
+-------------------------------------------------------------------*/
+
 router.get("/related/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Check if id is defined
-    if (!id) {
-      return res.status(400).send({ message: "Product ID is required" });
-    }
-
-    // Find the product by ID
     const product = await Products.findById(id);
-
     if (!product) {
       return res.status(404).send({ message: "Product not found" });
     }
 
-    // Create a regex pattern for partial matching of the product name
-    const titleRegex = new RegExp(
-      product.name
-        .split(" ")
-        .filter((word) => word.length > 1)
-        .join("|"),
-      "i"
-    );
+    const words = product.name
+      .split(" ")
+      .filter((word) => word.length > 1)
+      // escape regex metacharacters so a product named "Silk (Ltd.)"
+      // can't throw or match unintended documents
+      .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 
-    // Find related products that match either the name or category, excluding the current product
+    const orConditions = [];
+    if (words.length > 0) {
+      orConditions.push({ name: { $regex: new RegExp(words.join("|"), "i") } });
+    }
+
+    // Match on every category the product belongs to, not just the primary
+    const allCats = product.categories?.length ? product.categories : [product.category];
+    orConditions.push({ category: { $in: allCats } });
+    orConditions.push({ categories: { $in: allCats } });
+
     const relatedProducts = await Products.find({
-      _id: { $ne: id }, // Exclude the current product
-      $or: [
-        { name: { $regex: titleRegex } }, // Match similar names
-        { category: product.category }, // Match the same category
-      ],
-    });
+      _id: { $ne: id },
+      $or: orConditions
+    }).limit(12);
 
     res.status(200).send(relatedProducts);
   } catch (error) {
