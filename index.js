@@ -69,10 +69,43 @@ async function connectDB() {
 // ------------------------------------------------------------------
 // CORS
 // ------------------------------------------------------------------
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+// Common local dev origins, used only when ALLOWED_ORIGINS is unset
+// and NODE_ENV is not production. Production must be explicit — an
+// empty allowlist there should fail, not silently open up.
+const DEV_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:3000',
+];
+
+const configuredOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
+
+const isProduction = process.env.NODE_ENV === 'production';
+
+const allowedOrigins =
+  configuredOrigins.length > 0
+    ? configuredOrigins
+    : isProduction
+      ? []
+      : DEV_ORIGINS;
+
+if (configuredOrigins.length === 0) {
+  if (isProduction) {
+    // Every cross-origin browser request will fail CORS until this is set.
+    console.error(
+      'FATAL: ALLOWED_ORIGINS is not set. Set it in your Vercel project ' +
+        'environment variables as a comma-separated list of origins.'
+    );
+  } else {
+    console.warn(
+      'ALLOWED_ORIGINS not set — falling back to localhost dev origins: ' +
+        DEV_ORIGINS.join(', ')
+    );
+  }
+}
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
