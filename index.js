@@ -55,7 +55,7 @@ app.use((req, res, next) => {
   
   // Handle preflight OPTIONS requests immediately
   if (req.method === 'OPTIONS') {
-    console.log('✅ OPTIONS request handled:', req.url);
+   //console.log('✅ OPTIONS request handled:', req.url);
     return res.sendStatus(200);
   }
   
@@ -73,7 +73,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Logging middleware
 app.use((req, res, next) => {
-  console.log(`📨 ${req.method} ${req.url} from ${req.headers.origin || 'unknown'}`);
+ //console.log(`📨 ${req.method} ${req.url} from ${req.headers.origin || 'unknown'}`);
   next();
 });
 
@@ -116,10 +116,10 @@ async function main() {
       process.exit(1);
     }
     
-    console.log('🔍 Connecting to MongoDB...');
+   //console.log('🔍 Connecting to MongoDB...');
     await mongoose.connect(MONGODB_URI);
-    console.log('✅ MongoDB connected successfully!');
-    console.log('📁 Database name:', mongoose.connection.db.databaseName);
+   //console.log('✅ MongoDB connected successfully!');
+   //console.log('📁 Database name:', mongoose.connection.db.databaseName);
     
   } catch (err) {
     console.error('❌ MongoDB connection error:', err);
@@ -133,7 +133,7 @@ main();
 // Start Server
 // ============================================
 app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
+ //console.log(`🚀 Server running on port ${port}`);
 });
 
 // ============================================

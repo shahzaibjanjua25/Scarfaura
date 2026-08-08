@@ -29,6 +29,6 @@ const ProductSchema = new mongoose.Schema(
 
 const Products = mongoose.model("Product", ProductSchema);
 
-console.log('✅ Product model loaded with array support');
+//console.log('✅ Product model loaded with array support');
 
 module.exports = Products;

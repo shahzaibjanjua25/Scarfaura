@@ -1,8 +1,8 @@
 ﻿// const mongoose = require('mongoose');
 // require('dotenv').config({ path: __dirname + '/.env' });
 
-// console.log('🔍 Testing connection to MongoDB Atlas...');
-// console.log('📦 URL:', process.env.MONGODB_URL);
+////console.log('🔍 Testing connection to MongoDB Atlas...');
+////console.log('📦 URL:', process.env.MONGODB_URL);
 
 // async function testConnection() {
 //   try {
@@ -10,8 +10,8 @@
 //       serverSelectionTimeoutMS: 15000,
 //       connectTimeoutMS: 15000,
 //     });
-//     console.log('✅ Connected successfully to MongoDB Atlas!');
-//     console.log('📊 Database:', mongoose.connection.db.databaseName);
+//    //console.log('✅ Connected successfully to MongoDB Atlas!');
+//    //console.log('📊 Database:', mongoose.connection.db.databaseName);
 //     await mongoose.disconnect();
 //     process.exit(0);
 //   } catch (error) {

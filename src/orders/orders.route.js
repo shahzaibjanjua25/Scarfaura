@@ -73,7 +73,7 @@ router.post("/create-order", async (req, res) => {
       _id: order._id
     });
 
-    
+
   } catch (error) {
     console.error("Error creating order:", error);
     res.status(500).json({
@@ -168,7 +168,7 @@ router.get('/', async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
     if (orders.length === 0) {
-      console.log('No orders found');
+     //console.log('No orders found');
       return res.status(200).json({ message: "No orders found", orders: [] });
     }
 

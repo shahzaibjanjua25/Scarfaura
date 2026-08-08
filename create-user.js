@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 async function createTestUser() {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
-    console.log('✅ Connected!');
+   //console.log('✅ Connected!');
     
     const User = require('./src/users/user.model');
     
@@ -19,11 +19,11 @@ async function createTestUser() {
         role: 'admin'
       });
       await user.save();
-      console.log('✅ Test user created!');
-      console.log('User ID:', user._id);
+     //console.log('✅ Test user created!');
+     //console.log('User ID:', user._id);
     } else {
-      console.log('✅ User already exists!');
-      console.log('User ID:', user._id);
+     //console.log('✅ User already exists!');
+     //console.log('User ID:', user._id);
     }
     
     await mongoose.disconnect();

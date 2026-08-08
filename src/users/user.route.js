@@ -26,7 +26,7 @@ const generateToken = (userId) => {
 router.post('/register', async (req, res) => {
     try {
         const { email, password, username } = req.body;
-        console.log('📝 Registration attempt for:', email);
+       //console.log('📝 Registration attempt for:', email);
         
         const existingUser = await User.findOne({ 
             email: email.toLowerCase().trim() 
@@ -46,7 +46,7 @@ router.post('/register', async (req, res) => {
         });
         
         await user.save();
-        console.log('✅ User registered successfully:', email);
+       //console.log('✅ User registered successfully:', email);
         
         res.status(201).json({ 
             success: true,
@@ -65,10 +65,10 @@ router.post('/register', async (req, res) => {
 
 // Login
 router.post('/login', async (req, res) => {
-    console.log('========================================');
-    console.log('🔐 LOGIN ATTEMPT RECEIVED');
-    console.log('📧 Email:', req.body?.email);
-    console.log('========================================');
+   //console.log('========================================');
+   //console.log('🔐 LOGIN ATTEMPT RECEIVED');
+   //console.log('📧 Email:', req.body?.email);
+   //console.log('========================================');
     
     try {
         const { email, password } = req.body;
@@ -80,27 +80,27 @@ router.post('/login', async (req, res) => {
             });
         }
 
-        console.log('🔍 Searching for user...');
+       //console.log('🔍 Searching for user...');
         const user = await User.findOne({ 
             email: email.toLowerCase().trim() 
         });
 
         if (!user) {
-            console.log('❌ User not found:', email);
+           //console.log('❌ User not found:', email);
             return res.status(401).json({ 
                 success: false,
                 message: 'Invalid credentials' 
             });
         }
 
-        console.log('✅ User found:', user.email);
-        console.log('🔐 Comparing passwords...');
+       //console.log('✅ User found:', user.email);
+       //console.log('🔐 Comparing passwords...');
         
         const isMatch = await bcrypt.compare(password, user.password);
-        console.log('🔐 Password match:', isMatch);
+       //console.log('🔐 Password match:', isMatch);
 
         if (!isMatch) {
-            console.log('❌ Password mismatch');
+           //console.log('❌ Password mismatch');
             return res.status(401).json({ 
                 success: false,
                 message: 'Invalid credentials' 
@@ -115,11 +115,11 @@ router.post('/login', async (req, res) => {
             });
         }
 
-        console.log('🔑 Generating token...');
+       //console.log('🔑 Generating token...');
         const token = generateToken(user._id);
 
-        console.log('✅ Token generated successfully');
-        console.log('========================================');
+       //console.log('✅ Token generated successfully');
+       //console.log('========================================');
 
         const response = {
             success: true,
